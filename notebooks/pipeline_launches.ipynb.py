@@ -214,6 +214,25 @@ print(f"Tabela '{table_name}' carregada com sucesso.")
 
 # COMMAND ----------
 
+# Célula de Setup para os Gráficos
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+# Definir um estilo visual mais agradável para os gráficos
+sns.set_style("whitegrid")
+
+# Obter o caminho raiz do repositório
+repo_root = os.getcwd()
+output_images_dir = os.path.join(repo_root, "output/images")
+
+# Criar o diretório para salvar as imagens, se não existir
+os.makedirs(output_images_dir, exist_ok=True)
+
+print(f"Gráficos serão salvos em: {output_images_dir}")
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### Análise 1: Evolução dos Lançamentos ao Longo do Tempo
 # MAGIC
@@ -221,16 +240,33 @@ print(f"Tabela '{table_name}' carregada com sucesso.")
 
 # COMMAND ----------
 
-# Contagem de lançamentos por ano
+# Análise 1: Evolução dos Lançamentos ao Longo do Tempo
+
+# Agregação com PySpark (sem alterações)
 launches_per_year_df = launches_final_table.groupBy("launch_year").count().orderBy("launch_year")
 
-print("Contagem de Lançamentos por Ano:")
-display(launches_per_year_df)
+# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
+# 1. Converter para Pandas
+pandas_df_year = launches_per_year_df.toPandas()
 
-# No Databricks, clique no ícone de gráfico e escolha o "Gráfico de Linhas" (Line chart)
-# para visualizar a tendência de crescimento ao longo dos anos.
-# - Eixo X: launch_year
-# - Eixo Y: count
+# 2. Criar o gráfico
+plt.figure(figsize=(12, 7))
+sns.lineplot(x="launch_year", y="count", data=pandas_df_year, marker='o', markersize=8)
+plt.title("Evolução do Número de Lançamentos da SpaceX por Ano", fontsize=16)
+plt.xlabel("Ano", fontsize=12)
+plt.ylabel("Número de Lançamentos", fontsize=12)
+plt.xticks(pandas_df_year["launch_year"]) # Garante que todos os anos apareçam no eixo
+plt.grid(True)
+
+# 3. Salvar a imagem
+file_path_year = os.path.join(output_images_dir, "launches_per_year.png")
+plt.savefig(file_path_year, bbox_inches='tight')
+plt.close() # Fecha a figura para liberar memória
+
+print(f"Gráfico de lançamentos por ano salvo em: {file_path_year}")
+
+# Manter a visualização interativa do Databricks
+display(launches_per_year_df)
 
 # COMMAND ----------
 
@@ -241,7 +277,9 @@ display(launches_per_year_df)
 
 # COMMAND ----------
 
-# Agregação para calcular totais, sucessos, falhas e taxa de sucesso por país
+# Análise 2: Desempenho por País (Taxa de Sucesso)
+
+# Agregação com PySpark (sem alterações)
 success_rate_df = launches_final_table.groupBy("country_name") \
     .agg(
         count("*").alias("total_launches"),
@@ -253,7 +291,25 @@ success_rate_df = launches_final_table.groupBy("country_name") \
     ) \
     .orderBy(col("total_launches").desc())
 
-print("Desempenho de Lançamentos por País:")
+# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
+# 1. Converter para Pandas
+pandas_df_country = success_rate_df.toPandas()
+
+# 2. Criar o gráfico de barras
+plt.figure(figsize=(10, 6))
+sns.barplot(x="total_launches", y="country_name", data=pandas_df_country, palette="viridis")
+plt.title("Número Total de Lançamentos por País", fontsize=16)
+plt.xlabel("Número Total de Lançamentos", fontsize=12)
+plt.ylabel("País", fontsize=12)
+
+# 3. Salvar a imagem
+file_path_country = os.path.join(output_images_dir, "launches_per_country.png")
+plt.savefig(file_path_country, bbox_inches='tight')
+plt.close()
+
+print(f"Gráfico de lançamentos por país salvo em: {file_path_country}")
+
+# Manter a visualização da tabela interativa
 display(success_rate_df)
 
 # COMMAND ----------
@@ -265,24 +321,30 @@ display(success_rate_df)
 
 # COMMAND ----------
 
-# Contagem de lançamentos por base de lançamento
+# Análise 3: Bases de Lançamento Mais Ativas
+
+# Agregação com PySpark (sem alterações)
 launches_per_launchpad_df = launches_final_table.groupBy("launchpad_name") \
     .count() \
     .orderBy(col("count").desc())
 
-print("Contagem de Lançamentos por Base:")
+# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
+# 1. Converter para Pandas
+pandas_df_launchpad = launches_per_launchpad_df.toPandas()
+
+# 2. Criar o gráfico de barras horizontais
+plt.figure(figsize=(12, 8))
+sns.barplot(x="count", y="launchpad_name", data=pandas_df_launchpad, palette="plasma")
+plt.title("Bases de Lançamento Mais Ativas da SpaceX", fontsize=16)
+plt.xlabel("Número de Lançamentos", fontsize=12)
+plt.ylabel("Base de Lançamento", fontsize=12)
+
+# 3. Salvar a imagem
+file_path_launchpad = os.path.join(output_images_dir, "launches_per_launchpad.png")
+plt.savefig(file_path_launchpad, bbox_inches='tight')
+plt.close()
+
+print(f"Gráfico de lançamentos por base salvo em: {file_path_launchpad}")
+
+# Manter a visualização interativa do Databricks
 display(launches_per_launchpad_df)
-
-# No Databricks, você pode visualizar isso como um "Gráfico de Barras" (Bar chart)
-# ou como um "Gráfico de Pizza" (Pie chart) para ver a distribuição percentual.
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ### Conclusão das Análises
-# MAGIC
-# MAGIC Com o pipeline de dados que construímos, agora somos capazes de responder a perguntas importantes de negócio:
-# MAGIC
-# MAGIC * **Crescimento:** A frequência de lançamentos está aumentando, diminuindo ou estável? (Análise 1)
-# MAGIC * **Confiabilidade Geográfica:** Existe alguma diferença na taxa de sucesso entre as bases de lançamento em diferentes países? (Análise 2)
-# MAGIC * **Logística Operacional:** Quais são as bases de lançamento mais críticas para a operação da SpaceX? (Análise 3)
