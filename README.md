@@ -75,17 +75,17 @@ A última etapa do notebook realiza uma série de análises sobre a tabela final
 #### 1. Crescimento Exponencial de Lançamentos da SpaceX
 O gráfico de linhas mostra a evolução do número de lançamentos por ano, evidenciando o rápido crescimento das operações.
 
-![Gráfico de Lançamentos por Ano](output/images/launches_per_year.png)
+![Gráfico de Lançamentos por Ano](notebooks/output/images/launches_per_year.png)
 
 #### 2. Desempenho e Distribuição por País
 A análise do número de lançamentos por país mostra a concentração das operações nos Estados Unidos, com um altíssimo índice de sucesso.
 
-![Gráfico de Lançamentos por País](output/images/launches_per_country.png)
+![Gráfico de Lançamentos por País](notebooks/output/images/launches_per_country.png)
 
 #### 3. Bases de Lançamento Mais Ativas
 O gráfico de barras horizontais identifica as bases de lançamento mais estratégicas para a SpaceX, destacando os principais centros operacionais.
 
-![Gráfico de Lançamentos por Base](output/images/launches_per_launchpad.png)
+![Gráfico de Lançamentos por Base](notebooks/output/images/launches_per_launchpad.png)
 
 ---
 
