@@ -90,16 +90,17 @@ launchpads_selected_df = launchpads_df.select(
 )
 countries_selected_df = countries_df.select(col("name.common").alias("country_name"), "cca3", "region", "population", "currencies")
 
+# Criação da coluna de país da base
 launchpads_with_country_df = launchpads_selected_df.withColumn("launchpad_country",
     when(lower(col("locality")).like("%vandenberg%"), "United States")
     .when(lower(col("locality")).like("%cape canaveral%"), "United States")
     .when(lower(col("locality")).like("%starbase%"), "United States")
     .when(lower(col("locality")).like("%kennedy space center%"), "United States")
     .when(lower(col("locality")).like("%kwajalein atoll%"), "Marshall Islands")
-    .otherwise("Unknown") # Se um novo local aparecer, será marcado como desconhecido
+    .otherwise("Unknown")
 )
 
-# 2. Padronização de datas e criação de colunas de partição
+# 2. Padronização de datas
 launches_typed_df = launches_selected_df \
     .withColumn("launch_date", to_timestamp(col("date_utc"))) \
     .withColumn("launch_year", year(col("launch_date"))) \
@@ -108,7 +109,7 @@ launches_typed_df = launches_selected_df \
 # 3. Limpeza de dados nulos
 launches_cleaned_df = launches_typed_df.withColumn("success", when(col("success").isNull(), False).otherwise(col("success")))
 
-# 4. Enriquecimento com dados das bases de lançamento (Join 1)
+# 4. Enriquecimento com dados das bases de lançamento (Join 1) 
 launches_with_launchpad_df = launches_cleaned_df.join(
     launchpads_with_country_df,
     launches_cleaned_df.launchpad == launchpads_with_country_df.launchpad_id,
@@ -116,19 +117,13 @@ launches_with_launchpad_df = launches_cleaned_df.join(
 )
 
 # 5. Enriquecimento com dados dos países (Join 2)
-launches_with_country_name_df = launches_with_launchpad_df \
-    .withColumn("country_normalized",
-        when(col("launchpad_country") == "United States", "United States of America")
-        .otherwise(col("launchpad_country"))
-    )
-
-final_df = launches_with_country_name_df.join(
+final_df = launches_with_launchpad_df.join(
     countries_selected_df,
-    launches_with_country_name_df.country_normalized == countries_selected_df.country_name,
+    launches_with_launchpad_df.launchpad_country == countries_selected_df.country_name, # A condição do join foi simplificada
     "left"
 )
 
-# Seleção final de colunas para o dataset de saída
+# Seleção final de colunas
 output_df = final_df.select(
     "id",
     "name",
@@ -137,7 +132,7 @@ output_df = final_df.select(
     "rocket",
     "launchpad_name",
     "locality",
-    col("launchpad_country").alias("country_name"), # Usando nossa coluna criada
+    col("launchpad_country").alias("country_name"),
     "region",
     "population",
     "currencies",
@@ -181,6 +176,62 @@ with open(file_path, "w") as f:
 
 print(f"Relatório salvo com sucesso em: {file_path}")
 print(json.dumps(dq_final_report, indent=4))
+
+# COMMAND ----------
+
+# Célula 5.1: Visualização do Relatório de Qualidade
+import json
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+
+print("Gerando visualização do relatório de qualidade...")
+
+# --- Carregar os dados do relatório JSON ---
+repo_root = os.getcwd()
+json_path = os.path.join(repo_root, "output/dq_report/dq_report.json")
+
+with open(json_path, 'r') as f:
+    dq_data = json.load(f)
+
+# Converter a parte de checagem de colunas para um DataFrame pandas
+dq_df = pd.DataFrame(dq_data['columns_check'])
+
+# --- Gerar o Gráfico ---
+plt.figure(figsize=(12, 8))
+sns.set_style("whitegrid")
+
+# Criar o gráfico de barras horizontais
+barplot = sns.barplot(
+    x="null_ratio_percent", 
+    y="column", 
+    data=dq_df, 
+    palette="coolwarm"
+)
+
+# Adicionar os valores exatos nas barras para clareza
+for index, value in enumerate(dq_df['null_ratio_percent']):
+    if value > 0:
+        plt.text(value + 0.1, index, f'{value:.2f}%', color='black', ha="left", va="center")
+
+plt.title("Percentual de Valores Nulos por Coluna", fontsize=16)
+plt.xlabel("Percentual de Nulos (%)", fontsize=12)
+plt.ylabel("Coluna", fontsize=12)
+plt.xlim(0, max(dq_df['null_ratio_percent']) * 1.2 + 1) # Ajustar o limite do eixo x
+
+# --- Salvar o Gráfico ---
+output_images_dir = os.path.join(repo_root, "output/images")
+os.makedirs(output_images_dir, exist_ok=True) # Garantir que a pasta existe
+
+file_path_dq = os.path.join(output_images_dir, "data_quality_null_ratio.png")
+plt.savefig(file_path_dq, bbox_inches='tight')
+plt.close()
+
+print(f"Gráfico de qualidade de dados salvo em: {file_path_dq}")
+
+# Exibir o DataFrame no notebook
+display(dq_df)
 
 # COMMAND ----------
 
@@ -242,10 +293,9 @@ print(f"Gráficos serão salvos em: {output_images_dir}")
 
 # Análise 1: Evolução dos Lançamentos ao Longo do Tempo
 
-# Agregação com PySpark (sem alterações)
+# Agregação com PySpark
 launches_per_year_df = launches_final_table.groupBy("launch_year").count().orderBy("launch_year")
 
-# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
 # 1. Converter para Pandas
 pandas_df_year = launches_per_year_df.toPandas()
 
@@ -255,17 +305,16 @@ sns.lineplot(x="launch_year", y="count", data=pandas_df_year, marker='o', marker
 plt.title("Evolução do Número de Lançamentos da SpaceX por Ano", fontsize=16)
 plt.xlabel("Ano", fontsize=12)
 plt.ylabel("Número de Lançamentos", fontsize=12)
-plt.xticks(pandas_df_year["launch_year"]) # Garante que todos os anos apareçam no eixo
+plt.xticks(pandas_df_year["launch_year"])
 plt.grid(True)
 
 # 3. Salvar a imagem
 file_path_year = os.path.join(output_images_dir, "launches_per_year.png")
 plt.savefig(file_path_year, bbox_inches='tight')
-plt.close() # Fecha a figura para liberar memória
+plt.close()
 
 print(f"Gráfico de lançamentos por ano salvo em: {file_path_year}")
 
-# Manter a visualização interativa do Databricks
 display(launches_per_year_df)
 
 # COMMAND ----------
@@ -279,7 +328,7 @@ display(launches_per_year_df)
 
 # Análise 2: Desempenho por País (Taxa de Sucesso)
 
-# Agregação com PySpark (sem alterações)
+# Agregação com PySpark
 success_rate_df = launches_final_table.groupBy("country_name") \
     .agg(
         count("*").alias("total_launches"),
@@ -291,7 +340,6 @@ success_rate_df = launches_final_table.groupBy("country_name") \
     ) \
     .orderBy(col("total_launches").desc())
 
-# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
 # 1. Converter para Pandas
 pandas_df_country = success_rate_df.toPandas()
 
@@ -309,7 +357,6 @@ plt.close()
 
 print(f"Gráfico de lançamentos por país salvo em: {file_path_country}")
 
-# Manter a visualização da tabela interativa
 display(success_rate_df)
 
 # COMMAND ----------
@@ -323,12 +370,11 @@ display(success_rate_df)
 
 # Análise 3: Bases de Lançamento Mais Ativas
 
-# Agregação com PySpark (sem alterações)
+# Agregação com PySpark
 launches_per_launchpad_df = launches_final_table.groupBy("launchpad_name") \
     .count() \
     .orderBy(col("count").desc())
 
-# --- NOVO: Geração e salvamento do gráfico com Matplotlib ---
 # 1. Converter para Pandas
 pandas_df_launchpad = launches_per_launchpad_df.toPandas()
 
@@ -346,5 +392,4 @@ plt.close()
 
 print(f"Gráfico de lançamentos por base salvo em: {file_path_launchpad}")
 
-# Manter a visualização interativa do Databricks
 display(launches_per_launchpad_df)

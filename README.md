@@ -87,6 +87,11 @@ O gráfico de barras horizontais identifica as bases de lançamento mais estrat�
 
 ![Gráfico de Lançamentos por Base](notebooks/output/images/launches_per_launchpad.png)
 
+#### 4. Validação da Qualidade dos Dados
+O relatório de qualidade confirma a integridade do nosso dataset final. O gráfico abaixo mostra o percentual de valores nulos por coluna, evidenciando que os dados críticos para análise estão completos e limpos.
+
+![Relatório de Qualidade de Dados](notebooks/output/images/data_quality_null_ratio.png)
+
 ---
 
 *Projeto desenvolvido por Arthur Rodrigues.*
