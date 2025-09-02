@@ -1,0 +1,70 @@
+{
+    "total_rows": 205,
+    "columns_check": [
+        {
+            "column": "id",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "name",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "launch_date",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "success",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "rocket",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "launchpad_name",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "locality",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "country_name",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "region",
+            "null_count": 205,
+            "null_ratio_percent": 100.0
+        },
+        {
+            "column": "population",
+            "null_count": 205,
+            "null_ratio_percent": 100.0
+        },
+        {
+            "column": "currencies",
+            "null_count": 205,
+            "null_ratio_percent": 100.0
+        },
+        {
+            "column": "launch_year",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        },
+        {
+            "column": "launch_month",
+            "null_count": 0,
+            "null_ratio_percent": 0.0
+        }
+    ]
+}

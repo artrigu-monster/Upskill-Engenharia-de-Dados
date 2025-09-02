@@ -1,0 +1,288 @@
+# Databricks notebook source
+# Célula 1: Instalação de Dependências
+%pip install -r ../requirements.txt
+
+# COMMAND ----------
+
+# Célula 2: Importações
+import requests
+import json
+from pyspark.sql.functions import col, to_timestamp, year, month, when
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, BooleanType
+
+# COMMAND ----------
+
+# Célula 3: Passo 1 - Extração (E)
+import requests
+import json
+import pandas as pd
+from pyspark.sql.functions import col, to_timestamp, year, month, when
+
+print("Iniciando extração de dados...")
+
+# URLs das APIs
+launches_url = "https://api.spacexdata.com/v4/launches"
+launchpads_url = "https://api.spacexdata.com/v4/launchpads"
+countries_url = "https://restcountries.com/v3.1/all?fields=name,cca3,region,population,currencies"
+
+try:
+    # --- Requisição 1: Launches ---
+    print("Tentando extrair dados de: Lançamentos (SpaceX)")
+    launches_response = requests.get(launches_url, timeout=30)
+    launches_response.raise_for_status()
+    launches_data = launches_response.json()
+    print("1/3 - Dados da SpaceX (Lançamentos) extraídos com sucesso.")
+
+    # --- Requisição 2: Launchpads ---
+    print("Tentando extrair dados de: Bases de Lançamento (SpaceX)")
+    launchpads_response = requests.get(launchpads_url, timeout=30)
+    launchpads_response.raise_for_status()
+    launchpads_data = launchpads_response.json()
+    print("2/3 - Dados da SpaceX (Bases de Lançamento) extraídos com sucesso.")
+
+    # --- Requisição 3: Countries ---
+    print("Tentando extrair dados de: Países (REST Countries)")
+    countries_response = requests.get(countries_url, timeout=30)
+    countries_response.raise_for_status()
+    countries_data = countries_response.json()
+    print("3/3 - Dados da REST Countries extraídos com sucesso.")
+
+    # --- Verificação de tipo de dados ---
+    if not isinstance(launches_data, list) or not isinstance(launchpads_data, list) or not isinstance(countries_data, list):
+        raise TypeError("Uma das APIs não retornou uma lista de dados como esperado.")
+
+    print("\nExtração concluída. Convertendo para DataFrames Spark...")
+    
+    launches_df = spark.createDataFrame(pd.DataFrame(launches_data))
+    launchpads_df = spark.createDataFrame(pd.DataFrame(launchpads_data))
+    countries_df = spark.createDataFrame(pd.DataFrame(countries_data))
+    
+    print("DataFrames criados com sucesso!")
+    countries_df.printSchema()
+
+except requests.exceptions.HTTPError as err:
+    print("========================= ERRO DE API DETECTADO =========================")
+    print(f"A extração de dados falhou na URL: {err.request.url}")
+    print(f"Código de Status HTTP: {err.response.status_code}")
+    print(f"Resposta da API: {err.response.text}")
+    print("=======================================================================")
+    dbutils.notebook.exit("Falha na extração de dados da API. Verifique a saída de erro acima para detalhes.")
+except requests.exceptions.RequestException as e:
+    print(f"ERRO DE CONEXÃO: Não foi possível conectar à API. Detalhes: {e}")
+    dbutils.notebook.exit("Falha de conexão com a API.")
+except Exception as e:
+    print(f"Ocorreu um erro inesperado: {e}")
+    dbutils.notebook.exit("Ocorreu um erro inesperado.")
+
+# COMMAND ----------
+
+# Célula 4: Passo 2 - Transformação (T)
+from pyspark.sql.functions import col, to_timestamp, year, month, when, lower
+
+print("Iniciando transformações...")
+
+# 1. Seleção de colunas
+launches_selected_df = launches_df.select("id", "name", "date_utc", "launchpad", "success", "rocket")
+launchpads_selected_df = launchpads_df.select(
+    col("id").alias("launchpad_id"), 
+    col("name").alias("launchpad_name"), 
+    col("locality")
+)
+countries_selected_df = countries_df.select(col("name.common").alias("country_name"), "cca3", "region", "population", "currencies")
+
+launchpads_with_country_df = launchpads_selected_df.withColumn("launchpad_country",
+    when(lower(col("locality")).like("%vandenberg%"), "United States")
+    .when(lower(col("locality")).like("%cape canaveral%"), "United States")
+    .when(lower(col("locality")).like("%starbase%"), "United States")
+    .when(lower(col("locality")).like("%kennedy space center%"), "United States")
+    .when(lower(col("locality")).like("%kwajalein atoll%"), "Marshall Islands")
+    .otherwise("Unknown") # Se um novo local aparecer, será marcado como desconhecido
+)
+
+# 2. Padronização de datas e criação de colunas de partição
+launches_typed_df = launches_selected_df \
+    .withColumn("launch_date", to_timestamp(col("date_utc"))) \
+    .withColumn("launch_year", year(col("launch_date"))) \
+    .withColumn("launch_month", month(col("launch_date")))
+
+# 3. Limpeza de dados nulos
+launches_cleaned_df = launches_typed_df.withColumn("success", when(col("success").isNull(), False).otherwise(col("success")))
+
+# 4. Enriquecimento com dados das bases de lançamento (Join 1)
+launches_with_launchpad_df = launches_cleaned_df.join(
+    launchpads_with_country_df,
+    launches_cleaned_df.launchpad == launchpads_with_country_df.launchpad_id,
+    "left"
+)
+
+# 5. Enriquecimento com dados dos países (Join 2)
+launches_with_country_name_df = launches_with_launchpad_df \
+    .withColumn("country_normalized",
+        when(col("launchpad_country") == "United States", "United States of America")
+        .otherwise(col("launchpad_country"))
+    )
+
+final_df = launches_with_country_name_df.join(
+    countries_selected_df,
+    launches_with_country_name_df.country_normalized == countries_selected_df.country_name,
+    "left"
+)
+
+# Seleção final de colunas para o dataset de saída
+output_df = final_df.select(
+    "id",
+    "name",
+    "launch_date",
+    "success",
+    "rocket",
+    "launchpad_name",
+    "locality",
+    col("launchpad_country").alias("country_name"), # Usando nossa coluna criada
+    "region",
+    "population",
+    "currencies",
+    "launch_year",
+    "launch_month"
+)
+
+print("Transformações concluídas.")
+output_df.printSchema()
+
+# COMMAND ----------
+
+# Célula 5: Passo 3 - Relatório de Qualidade de Dados (DQ)
+import json
+import os
+from pyspark.sql.functions import col, count, when
+
+print("Gerando relatório de qualidade...")
+
+total_rows = output_df.count()
+dq_report_list = []
+
+for c in output_df.columns:
+    null_count = output_df.filter(col(c).isNull()).count()
+    null_ratio = (null_count / total_rows) * 100 if total_rows > 0 else 0
+    dq_report_list.append({"column": c, "null_count": null_count, "null_ratio_percent": round(null_ratio, 2)})
+
+dq_final_report = {"total_rows": total_rows, "columns_check": dq_report_list}
+
+# Obter o caminho raiz do repositório clonado no Databricks
+repo_root = os.getcwd()
+output_dir = os.path.join(repo_root, "output/dq_report")
+
+# Criar o diretório, se não existir
+os.makedirs(output_dir, exist_ok=True)
+
+# Escrever o arquivo JSON usando Python padrão
+file_path = os.path.join(output_dir, "dq_report.json")
+with open(file_path, "w") as f:
+    json.dump(dq_final_report, f, indent=4)
+
+print(f"Relatório salvo com sucesso em: {file_path}")
+print(json.dumps(dq_final_report, indent=4))
+
+# COMMAND ----------
+
+# Célula 6: Passo 4 - Carga (L)
+print("Salvando dados finais como uma tabela Delta gerenciada...")
+table_name = "launches_enriched"
+
+output_df.write \
+    .format("delta") \
+    .mode("overwrite") \
+    .partitionBy("launch_year", "launch_month") \
+    .saveAsTable(table_name)
+
+print(f"Dados salvos com sucesso na tabela: '{table_name}'")
+print("Você pode navegar até a aba 'Data' na interface do Databricks para ver a nova tabela.")
+
+# COMMAND ----------
+
+# Célula 7: Passo 5 - Análise e Dashboard de Lançamentos
+from pyspark.sql.functions import col, count, when, sum, format_number
+
+print("Iniciando a análise aprofundada da tabela 'launches_enriched'...")
+
+# ------------------------------------------------------------------------------------
+# 1. CARREGAMENTO DOS DADOS
+# ------------------------------------------------------------------------------------
+# Carregamos a tabela final que foi salva na Célula 6.
+table_name = "launches_enriched"
+launches_final_table = spark.read.table(table_name)
+print(f"Tabela '{table_name}' carregada com sucesso.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Análise 1: Evolução dos Lançamentos ao Longo do Tempo
+# MAGIC
+# MAGIC Vamos analisar o número de lançamentos por ano para entender a cadência e o crescimento das operações da SpaceX.
+
+# COMMAND ----------
+
+# Contagem de lançamentos por ano
+launches_per_year_df = launches_final_table.groupBy("launch_year").count().orderBy("launch_year")
+
+print("Contagem de Lançamentos por Ano:")
+display(launches_per_year_df)
+
+# No Databricks, clique no ícone de gráfico e escolha o "Gráfico de Linhas" (Line chart)
+# para visualizar a tendência de crescimento ao longo dos anos.
+# - Eixo X: launch_year
+# - Eixo Y: count
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Análise 2: Desempenho por País (Taxa de Sucesso)
+# MAGIC
+# MAGIC Agora, vamos aprofundar a análise geográfica, não apenas contando os lançamentos, mas também calculando a taxa de sucesso em cada país.
+
+# COMMAND ----------
+
+# Agregação para calcular totais, sucessos, falhas e taxa de sucesso por país
+success_rate_df = launches_final_table.groupBy("country_name") \
+    .agg(
+        count("*").alias("total_launches"),
+        sum(when(col("success") == True, 1).otherwise(0)).alias("successful_launches")
+    ) \
+    .withColumn("failure_launches", col("total_launches") - col("successful_launches")) \
+    .withColumn("success_rate_percent", 
+        format_number((col("successful_launches") / col("total_launches") * 100), 2)
+    ) \
+    .orderBy(col("total_launches").desc())
+
+print("Desempenho de Lançamentos por País:")
+display(success_rate_df)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Análise 3: Bases de Lançamento Mais Ativas
+# MAGIC
+# MAGIC Qual base de lançamento (Launchpad) é a mais utilizada? Esta análise nos dá uma visão mais granular do que a análise por país.
+
+# COMMAND ----------
+
+# Contagem de lançamentos por base de lançamento
+launches_per_launchpad_df = launches_final_table.groupBy("launchpad_name") \
+    .count() \
+    .orderBy(col("count").desc())
+
+print("Contagem de Lançamentos por Base:")
+display(launches_per_launchpad_df)
+
+# No Databricks, você pode visualizar isso como um "Gráfico de Barras" (Bar chart)
+# ou como um "Gráfico de Pizza" (Pie chart) para ver a distribuição percentual.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### Conclusão das Análises
+# MAGIC
+# MAGIC Com o pipeline de dados que construímos, agora somos capazes de responder a perguntas importantes de negócio:
+# MAGIC
+# MAGIC * **Crescimento:** A frequência de lançamentos está aumentando, diminuindo ou estável? (Análise 1)
+# MAGIC * **Confiabilidade Geográfica:** Existe alguma diferença na taxa de sucesso entre as bases de lançamento em diferentes países? (Análise 2)
+# MAGIC * **Logística Operacional:** Quais são as bases de lançamento mais críticas para a operação da SpaceX? (Análise 3)
