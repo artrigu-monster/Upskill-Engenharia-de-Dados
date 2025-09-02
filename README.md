@@ -1,40 +1,84 @@
-# Projeto de Pipeline de Dados: Análise Geopolítica de Lançamentos da SpaceX
+# Pipeline de Dados: Análise de Lançamentos da SpaceX
 
-## 1. Objetivo do Projeto
+![Databricks](https://img.shields.io/badge/Databricks-FF3621?style=for-the-badge&logo=databricks&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![PySpark](https://img.shields.io/badge/PySpark-002D5E?style=for-the-badge&logo=apache-spark&logoColor=white)
+![Delta Lake](https://img.shields.io/badge/Delta_Lake-00435A?style=for-the-badge&logo=linux&logoColor=white)
 
-Este projeto implementa um pipeline de dados completo para extrair, tratar e enriquecer informações sobre os lançamentos de foguetes da SpaceX. Os dados de lançamentos são cruzados com dados demográficos e geográficos de nações, obtidos da API REST Countries, com o objetivo de criar um dataset analítico para estudos sobre a distribuição global de atividades espaciais.
+## 🎯 Objetivo do Projeto
 
-O pipeline é desenvolvido para ser executado no ambiente Databricks, utilizando PySpark para transformações e Delta Lake para persistência.
+Este projeto implementa um pipeline de dados ETL (Extração, Transformação e Carga) de ponta a ponta, desenvolvido como parte do programa **Upskill Tiller | Engenharia de Dados**.
 
-## 2. APIs Utilizadas
+O objetivo principal é consumir dados de duas APIs públicas distintas, enriquecê-los e modelá-los para criar um dataset analítico de alta qualidade. O caso de uso escolhido foi a **análise de lançamentos de foguetes da SpaceX**, enriquecendo os dados brutos com informações demográficas e geográficas dos países onde as bases de lançamento estão localizadas.
 
-- **SpaceX API v4**: Fornece dados detalhados sobre lançamentos, foguetes e bases de lançamento (launchpads).
-  - Endpoint de Lançamentos: `https://api.spacexdata.com/v4/launches`
-  - Endpoint de Bases de Lançamento: `https://api.spacexdata.com/v4/launchpads`
-- **REST Countries v3.1**: Fornece dados detalhados sobre países.
-  - Endpoint de Países: `https://restcountries.com/v3.1/all`
+O resultado final é uma tabela Delta Lake limpa e otimizada, pronta para análises e visualizações.
 
-## 3. Como Executar no Databricks
+## 🛠️ Tecnologias Utilizadas
 
-1.  **Configurar o Cluster**: Crie ou utilize um cluster Databricks (qualquer versão recente do Databricks Runtime é suficiente).
-2.  **Clonar o Repositório**:
-    - Na interface do Databricks, vá para a seção **Repos**.
-    - Clique em **"Add Repo"**.
-    - Cole a URL do seu repositório GitHub e confirme.
-3.  **Abrir o Notebook**: Navegue até `notebooks/pipeline_launches.ipynb` e abra-o.
-4.  **Executar o Pipeline**: Anexe o notebook ao seu cluster e execute todas as células em ordem (`Run All`). A primeira célula de código instalará as dependências listadas no `requirements.txt`.
+* **Plataforma Cloud:** Databricks Community Edition
+* **Linguagem:** Python
+* **Processamento de Dados:** PySpark
+* **Formato de Armazenamento:** Delta Lake (Tabela Gerenciada)
+* **Bibliotecas Python:** `requests` para consumo de APIs e `pandas` para conversão de dados.
+* **Versionamento:** Git & GitHub
 
-## 4. Decisões de Arquitetura e Persistência
+## 📂 Estrutura do Repositório
 
-### Formato de Dados: Delta Lake
+```
+/
+├── README.md           # Documentação do projeto
+├── requirements.txt    # Dependências Python
+└── notebooks/
+    └── pipeline_launches.ipynb # Notebook Databricks com o código do pipeline
+```
 
-O dataset final é armazenado no formato **Delta Lake**. A escolha se baseia nos seguintes benefícios:
-- **Transações ACID**: Garante a confiabilidade e a integridade dos dados, mesmo com falhas ou escritas concorrentes.
-- **Performance**: O Delta Lake utiliza arquivos Parquet otimizados com compressão e indexing, acelerando as consultas.
-- **Time Travel**: Permite versionar os dados e consultar snapshots anteriores, facilitando auditorias e a recuperação de dados.
+## 📈 Etapas do Pipeline
 
-### Estratégia de Particionamento
+O pipeline foi desenvolvido no notebook `pipeline_launches.ipynb` e segue as seguintes etapas:
 
-Os dados foram particionados por `launch_year` (ano do lançamento) e `launch_month` (mês do lançamento). Esta estratégia foi escolhida para:
-- **Otimizar Consultas Temporais**: Análises que filtram por períodos específicos (ex: "todos os lançamentos de 2023") se tornam extremamente rápidas, pois o Spark lê apenas as partições relevantes, ignorando o resto dos dados.
-- **Gerenciamento de Dados**: Facilita operações de manutenção, como apagar ou arquivar dados de um determinado período.
+1.  **Extração (E):**
+    * Consumo de dados da **SpaceX API** para obter informações sobre lançamentos e bases de lançamento.
+    * Consumo de dados da **REST Countries API** para obter dados demográficos e geográficos dos países.
+    * Implementado tratamento de erros robusto para garantir a resiliência do pipeline contra falhas de API.
+
+2.  **Transformação (T):**
+    * Limpeza de dados nulos e seleção de colunas relevantes.
+    * Conversão e padronização de tipos de dados (ex: `string` para `timestamp`).
+    * **Enriquecimento de Dados:** Criação da coluna `country` (país) para as bases de lançamento, que não era fornecida pela API.
+    * **Join Estratégico:** Cruzamento dos dados de lançamentos com os dados dos países para criar um dataset unificado.
+
+3.  **Carga (L):**
+    * **Relatório de Qualidade:** Geração de um arquivo `dq_report.json` com métricas essenciais sobre a qualidade dos dados finais.
+    * **Persistência Otimizada:** Salvamento do DataFrame final como uma **tabela Delta gerenciada** no Databricks, particionada por ano e mês (`launch_year`, `launch_month`) para otimizar consultas temporais.
+
+## 🚀 Como Executar no Databricks
+
+1.  **Configurar o Cluster:** Crie ou utilize um cluster Databricks.
+2.  **Clonar o Repositório:**
+    * Na interface do Databricks, vá para a seção **Repos**.
+    * Clique em **"Add Repo"** e cole a URL deste repositório.
+3.  **Abrir o Notebook:** Navegue até `notebooks/pipeline_launches.ipynb` e anexe-o ao seu cluster.
+4.  **Executar o Pipeline:** Execute todas as células em ordem (`Run All`). A primeira célula instalará as dependências listadas no `requirements.txt` e as demais executarão o pipeline completo.
+
+## 📊 Demonstração dos Resultados
+
+A última etapa do notebook realiza uma série de análises sobre a tabela final para demonstrar o seu valor. Os insights extraídos incluem:
+
+#### 1. Crescimento Exponencial de Lançamentos da SpaceX
+O gráfico de linhas mostra a evolução do número de lançamentos por ano, evidenciando o rápido crescimento das operações.
+
+*(**SUGESTÃO:** Tire um print do gráfico de linhas gerado no Databricks e coloque a imagem aqui!)*
+`![Gráfico de Lançamentos por Ano](caminho/para/sua/imagem.png)`
+
+#### 2. Desempenho e Distribuição por País
+A análise da taxa de sucesso revela a confiabilidade das operações em diferentes localidades.
+
+*(**SUGESTÃO:** Tire um print da tabela de taxa de sucesso e coloque aqui!)*
+`![Tabela de Taxa de Sucesso](caminho/para/sua/imagem2.png)`
+
+#### 3. Bases de Lançamento Mais Ativas
+O gráfico de barras mostra quais bases de lançamento são mais estratégicas para a SpaceX, concentrando a maior parte das operações.
+
+---
+
+*Projeto desenvolvido por Arthur Rodrigues.*
